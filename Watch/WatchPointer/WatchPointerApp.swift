@@ -57,6 +57,18 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
     private var output: CBCharacteristic?
     private let motion = CMMotionManager()
 
+    /// Finger taps (any watch): 0 off, 1…3 = low, medium, high sensitivity. Off by default.
+    @Published var fingerLevel = UserDefaults.standard.integer(forKey: "fingerLevel") {
+        didSet { UserDefaults.standard.set(fingerLevel, forKey: "fingerLevel") }
+    }
+    /// Counts finger taps; `lastFingerTap` is when the latest one happened (motion clock).
+    @Published private(set) var fingerTaps = 0
+    private(set) var lastFingerTap: TimeInterval = 0
+    /// The latest clear shake, in g, for the meter on the pad (so you can see what your taps reach).
+    @Published private(set) var fingerPeak = 0.0
+    private var fingerPeakShown: TimeInterval = 0
+    private var finger = FingerTapDetector()
+
     private var heading = 0.0       // radians turned left since "Center"
     private var elevation = 0.0     // radians the top edge points above horizontal, right now
     private var elevationZero = 0.0 // elevation when "Center" was pressed
@@ -130,12 +142,28 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
             // Left/right has no absolute reference, so add up every turn around the vertical axis.
             // No dead zone: dropping slow turns is what made the old version slide out of line.
             heading += (r.x * up.x + r.y * up.y + r.z * up.z) * dt
+            detectFingerTap(data, dt: dt)
 
             guard connected else { return }
             flushScroll()
             guard !paused else { return }
             sendAim(at: data.timestamp)
         }
+    }
+
+    private func detectFingerTap(_ data: CMDeviceMotion, dt: Double) {
+        guard fingerLevel > 0 else { return }
+        let r = data.rotationRate
+        let spin = (r.x * r.x + r.y * r.y + r.z * r.z).squareRoot()
+        guard let event = finger.add(time: data.timestamp, dt: dt, acceleration: data.userAcceleration,
+                                     spin: spin, level: fingerLevel) else { return }
+        if event.tap || data.timestamp - fingerPeakShown > 0.15 { // the meter needn't redraw more often
+            fingerPeakShown = data.timestamp
+            fingerPeak = event.peak
+        }
+        guard event.tap, connected, !paused, !Touch.recent else { return }
+        lastFingerTap = event.time
+        fingerTaps += 1
     }
 
     private func sendAim(at timestamp: TimeInterval) {

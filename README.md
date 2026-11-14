@@ -76,6 +76,15 @@ On Apple Watch Series 9, Ultra 2 or later you can leave the watch on and use **D
 
 Keep the watch screen awake while you use it (raise your wrist). Double Tap is reported about a third of a second after you pinch; the click is sent where you pointed when your fingers met.
 
+### Finger taps (any watch, experimental)
+
+Older watches have no Double Tap, so WatchPointer can also feel a single **finger tap** itself: tap your thumb sharply against the side of your index finger once. It reacts faster than Double Tap, but it is a guess from the motion sensors, so it can miss or misfire.
+
+- The **hand** button at the top right turns it on and sets the sensitivity: off → 1 (low) → 2 → 3 (high). Turning it on switches Double Tap off.
+- **Tap**: click. **Tap again in the same spot** (within 1.5 s): pick it up; point, **tap** to drop.
+- A meter on the pad shows how hard your last tap was; a tap counts when it passes the middle line. If yours don't reach it, raise the sensitivity; if clicks happen on their own, lower it.
+- Touching the screen or turning the Crown never counts as a tap. Pause it while typing.
+
 ## How it works
 
 - **Watch** (`Watch/`): reads gravity and the gyroscope 100 times a second. Up/down comes from gravity, so it never drifts; left/right adds up turns around the vertical. Each sample is sent with the watch's timestamp.

@@ -25,6 +25,20 @@ struct ContentView: View {
                                 confirmUnpair = true
                             } label: { Image(systemName: "laptopcomputer") }
                         }
+                        // Top-right: finger taps (any watch). Each press: off → low → medium → high sensitivity.
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                pointer.fingerLevel = (pointer.fingerLevel + 1) % 4
+                            } label: {
+                                HStack(spacing: 1) {
+                                    Image(systemName: "hand.point.up.left")
+                                    if pointer.fingerLevel > 0 {
+                                        Text("\(pointer.fingerLevel)").font(.system(size: 12, weight: .bold))
+                                    }
+                                }
+                                .foregroundStyle(pointer.fingerLevel > 0 ? .orange : .white)
+                            }
+                        }
                     }
                 }
                 .confirmationDialog(unpairTitle, isPresented: $confirmUnpair, titleVisibility: .visible) {
@@ -75,7 +89,10 @@ struct ContentView: View {
         .focusable()
         .focused($crownFocused)
         .digitalCrownRotation($crown)
-        .onChange(of: crown) { old, new in pointer.scroll(by: (new - old) * crownPixels) }
+        .onChange(of: crown) { old, new in
+            Touch.mark(false) // turning the Crown shakes the watch too
+            pointer.scroll(by: (new - old) * crownPixels)
+        }
         .onAppear { crownFocused = true }
         .onChange(of: pointer.connected) { crownFocused = true }
         .sensoryFeedback(.impact(weight: .light), trigger: clicks)
@@ -159,10 +176,11 @@ private struct WaitingForMac: View {
 
 /// Tap = click. Hold = grab (mouse down); point to move; let go to drop.
 /// Watch on the wrist, Double Tap (pinch twice): click. Again in the same spot: grab. Point, Double Tap: drop.
+/// Finger taps (any watch, when on): the same, with one sharp thumb-on-finger tap in place of each Double Tap.
 private struct ClickPad: View {
     let paused: Bool
     @Binding var clicks: Int
-    let pointer: Pointer
+    @ObservedObject var pointer: Pointer
 
     @State private var pressing = false
     @State private var dragging = false
@@ -171,10 +189,10 @@ private struct ClickPad: View {
     /// The last Double Tap click: when, and where the watch pointed. A second one here soon after grabs.
     @State private var lastPinch: (time: TimeInterval, left: Double, up: Double)?
 
-    private func pinched() {
-        guard !paused else { return }
+    /// `at`: when the fingers met, on the motion clock.
+    private func pinched(at: TimeInterval) {
+        guard !paused, !pressing else { return }
         let now = ProcessInfo.processInfo.systemUptime
-        let at = now - pinchDelay
         if dragging {
             dragging = false
             pointer.send(.drag, 0, at: at)
@@ -205,10 +223,13 @@ private struct ClickPad: View {
         RoundedRectangle(cornerRadius: 22, style: .continuous)
             .fill(fill)
             // Double Tap only reaches a Button, so one sits behind the pad (covered, never touched).
+            // Off while finger taps are on: a Double Tap is two finger taps, and would count twice.
             .background {
-                Button("Click", action: pinched)
-                    .handGestureShortcut(.primaryAction)
-                    .accessibilityHidden(true)
+                if pointer.fingerLevel == 0 {
+                    Button("Click") { pinched(at: ProcessInfo.processInfo.systemUptime - pinchDelay) }
+                        .handGestureShortcut(.primaryAction)
+                        .accessibilityHidden(true)
+                }
             }
             .overlay {
                 Image(systemName: symbol)
@@ -216,6 +237,10 @@ private struct ClickPad: View {
                     .foregroundStyle(dragging ? .black : paused ? .orange : Color(white: 0.55))
                     .contentTransition(.symbolEffect(.replace))
             }
+            .overlay(alignment: .bottom) {
+                if pointer.fingerLevel > 0 { FingerMeter(peak: pointer.fingerPeak, level: pointer.fingerLevel, dark: dragging) }
+            }
+            .onChange(of: pointer.fingerTaps) { pinched(at: pointer.lastFingerTap - 0.02) } // just as the shake began
             .scaleEffect(pressing && !dragging ? 0.98 : 1)
             .animation(.smooth(duration: 0.15), value: pressing)
             .animation(.smooth(duration: 0.2), value: dragging)
@@ -225,6 +250,7 @@ private struct ClickPad: View {
                     .onChanged { _ in
                         guard !pressing else { return }
                         pressing = true
+                        Touch.mark(true)
                         lastPinch = nil
                         touchDown = ProcessInfo.processInfo.systemUptime // same clock as the motion samples
                         guard !dragging else { return } // grabbed by Double Tap: this touch drops it on release
@@ -236,6 +262,7 @@ private struct ClickPad: View {
                     .onEnded { _ in
                         holdTimer?.invalidate()
                         pressing = false
+                        Touch.mark(false)
                         if dragging {
                             dragging = false
                             pointer.send(.drag, 0, at: ProcessInfo.processInfo.systemUptime - 0.05) // just before the lift
@@ -246,6 +273,36 @@ private struct ClickPad: View {
                     }
             )
             .sensoryFeedback(trigger: dragging) { _, now in .impact(weight: now ? .heavy : .light) }
+    }
+}
+
+/// How hard the last shake was, against what a finger tap needs: tap and watch it, then pick the sensitivity.
+private struct FingerMeter: View {
+    let peak: Double
+    let level: Int
+    let dark: Bool
+
+    var body: some View {
+        let need = FingerTapDetector.threshold(level: level).minPeak
+        let fill = min(peak / (need * 2), 1)
+        VStack(spacing: 3) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(white: dark ? 0.75 : 0.25))
+                    Capsule().fill(peak >= need ? Color.orange : Color(white: dark ? 0.4 : 0.6))
+                        .frame(width: geo.size.width * fill)
+                    Rectangle().fill(dark ? Color.black : Color.white).frame(width: 1.5) // the line to cross
+                        .offset(x: geo.size.width / 2)
+                }
+            }
+            .frame(height: 4)
+            Text(String(format: "%.2fg", peak))
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .foregroundStyle(dark ? Color.black : Color(white: 0.5))
+        }
+        .padding(.horizontal, 22)
+        .padding(.bottom, 8)
+        .animation(.easeOut(duration: 0.1), value: peak)
     }
 }
 
@@ -275,5 +332,6 @@ private struct PressStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.6 : 1)
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.smooth(duration: 0.12), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in Touch.mark(pressed) } // not a finger tap
     }
 }
