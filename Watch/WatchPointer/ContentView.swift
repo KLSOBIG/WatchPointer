@@ -158,6 +158,7 @@ private struct WaitingForMac: View {
 }
 
 /// Tap = click. Hold = grab (mouse down); point to move; let go to drop.
+/// Watch on the wrist, Double Tap (pinch twice): click. Again in the same spot: grab. Point, Double Tap: drop.
 private struct ClickPad: View {
     let paused: Bool
     @Binding var clicks: Int
@@ -167,6 +168,30 @@ private struct ClickPad: View {
     @State private var dragging = false
     @State private var holdTimer: Timer?
     @State private var touchDown: TimeInterval = 0
+    /// The last Double Tap click: when, and where the watch pointed. A second one here soon after grabs.
+    @State private var lastPinch: (time: TimeInterval, left: Double, up: Double)?
+
+    private func pinched() {
+        guard !paused else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let at = now - pinchDelay
+        if dragging {
+            dragging = false
+            pointer.send(.drag, 0, at: at)
+            return
+        }
+        let aim = pointer.aimDegrees
+        if let last = lastPinch, now - last.time < pinchGrabWindow,
+           abs(aim.left - last.left) < pinchGrabSlack, abs(aim.up - last.up) < pinchGrabSlack {
+            lastPinch = nil
+            dragging = true
+            pointer.send(.drag, 1, at: at)
+            return
+        }
+        lastPinch = (now, aim.left, aim.up)
+        clicks += 1
+        pointer.send(.leftClick, at: at)
+    }
 
     private var fill: Color {
         if dragging { return .white }
@@ -179,6 +204,12 @@ private struct ClickPad: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 22, style: .continuous)
             .fill(fill)
+            // Double Tap only reaches a Button, so one sits behind the pad (covered, never touched).
+            .background {
+                Button("Click", action: pinched)
+                    .handGestureShortcut(.primaryAction)
+                    .accessibilityHidden(true)
+            }
             .overlay {
                 Image(systemName: symbol)
                     .font(.system(size: 28, weight: .medium))
@@ -194,7 +225,9 @@ private struct ClickPad: View {
                     .onChanged { _ in
                         guard !pressing else { return }
                         pressing = true
+                        lastPinch = nil
                         touchDown = ProcessInfo.processInfo.systemUptime // same clock as the motion samples
+                        guard !dragging else { return } // grabbed by Double Tap: this touch drops it on release
                         holdTimer = Timer.scheduledTimer(withTimeInterval: holdToDrag, repeats: false) { _ in
                             dragging = true
                             pointer.send(.drag, 1, at: touchDown)

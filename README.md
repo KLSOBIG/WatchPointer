@@ -67,6 +67,15 @@ Open `Game/index.html` in a browser, press **F** for full screen, and tap the wa
 
 On the iPhone's Watch app, turn off **Passcode › Wrist Detection**, or the watch locks as soon as it's off your wrist. On the watch, set **Display & Brightness › Wake Duration** to 70 seconds and **General › Return to Clock › WatchPointer** to one hour.
 
+## Keeping it on your wrist
+
+On Apple Watch Series 9, Ultra 2 or later you can leave the watch on and use **Double Tap** (pinch your index finger and thumb together twice) instead of touching the screen. The top of the watch points along your forearm, so aim with your arm.
+
+- **Double Tap**: click.
+- **Double Tap again in the same spot** (within 1.5 s): pick it up. Point to move it, then **Double Tap** to drop.
+
+Keep the watch screen awake while you use it (raise your wrist). Double Tap is reported about a third of a second after you pinch; the click is sent where you pointed when your fingers met.
+
 ## How it works
 
 - **Watch** (`Watch/`): reads gravity and the gyroscope 100 times a second. Up/down comes from gravity, so it never drifts; left/right adds up turns around the vertical. Each sample is sent with the watch's timestamp.

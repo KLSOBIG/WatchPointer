@@ -27,6 +27,14 @@ enum Kind: UInt8 { case aim = 0, leftClick = 1, rightClick = 2, scroll = 3, cent
 /// How long you hold the screen before it grabs. The Mac uses the same number to undo the press's jolt.
 let holdToDrag = 0.35
 
+/// Double Tap (pinch twice, watch on the wrist): the system reports it this long after the fingers met.
+/// Clicks are sent this far back so they land where you pointed while pinching.
+let pinchDelay = 0.35
+/// A second Double Tap within this time, without pointing elsewhere, picks up what the first one clicked.
+let pinchGrabWindow = 1.5
+/// "Without pointing elsewhere": the aim moved less than this many degrees between the two pinches.
+let pinchGrabSlack = 3.0
+
 /// A Mac running the receiver, seen nearby.
 struct FoundMac: Identifiable {
     let id: UUID
@@ -60,6 +68,11 @@ final class Pointer: NSObject, ObservableObject, CBCentralManagerDelegate, CBPer
         super.init()
         central = CBCentralManager(delegate: self, queue: .main)
         startMotion()
+    }
+
+    /// Where the watch points now, in degrees (left, up). Only compared with itself, to tell "still" from "moved".
+    var aimDegrees: (left: Double, up: Double) {
+        (heading * 180 / .pi, (elevation - elevationZero) * 180 / .pi)
     }
 
     /// Whatever direction the watch points now becomes the middle of the screen.
