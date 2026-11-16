@@ -165,7 +165,7 @@ struct NotchView: View {
 
     private var details: some View {
         HStack(spacing: 18) {
-            ScreenMap(pointer: live.pointer, active: live.phase == .live)
+            ScreenMap(pointer: live.pointer, phase: live.phase)
                 .frame(width: 156, height: 98)
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -219,18 +219,38 @@ struct NotchView: View {
 }
 
 /// A tiny picture of the screen with the pointer where the watch is aiming.
+/// Not aiming: says why, so it doesn't look like an empty grey box.
 struct ScreenMap: View {
     let pointer: CGPoint
-    let active: Bool
+    let phase: Live.Phase
+
+    private var note: (symbol: String, text: String)? {
+        switch phase {
+        case .live: nil
+        case .waiting: ("applewatch", "Open WatchPointer\non your watch")
+        case .paused: ("pause.fill", "Paused")
+        case .idle: ("applewatch.slash", "Watch asleep")
+        }
+    }
 
     var body: some View {
         Canvas { context, size in
             let display = MacDisplay().path(in: CGRect(origin: .zero, size: size))
             context.fill(display, with: .color(Color(white: 0.17)))
-            guard active else { return }
+            guard phase == .live else { return }
             let c = CGPoint(x: pointer.x * size.width, y: pointer.y * size.height)
             let arrow = context.resolve(Text(Image(systemName: "cursorarrow")).font(.system(size: 14)).foregroundStyle(.white))
             context.draw(arrow, at: CGPoint(x: c.x - 3, y: c.y - 1), anchor: .topLeading) // tip on the spot
+        }
+        .overlay {
+            if let note {
+                VStack(spacing: 5) {
+                    Image(systemName: note.symbol).font(.system(size: 15, weight: .medium))
+                    Text(note.text).font(.system(size: 10, weight: .medium)).multilineTextAlignment(.center)
+                }
+                .foregroundStyle(Color(white: 0.5))
+                .padding(.top, 6) // below the little notch
+            }
         }
     }
 }
