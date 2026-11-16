@@ -90,6 +90,7 @@ struct NotchView: View {
             .padding(.horizontal, 14)
         }
         .frame(width: size.width, height: size.height)
+        .contextMenu { Button("Quit WatchPointer") { NSApp.terminate(nil) } }
         .animation(.smooth(duration: 0.38), value: mode)
         .animation(.smooth(duration: 0.3), value: live.phase)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -115,6 +116,16 @@ struct NotchView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .transition(.opacity)
+                Button { NSApp.terminate(nil) } label: {
+                    Image(systemName: "power")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color(white: 0.5))
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Quit WatchPointer")
                 .transition(.opacity)
             }
             // Like the camera/mic indicator: one small dot.
@@ -227,20 +238,24 @@ final class ClickThroughHost<Content: View>: NSHostingView<Content> {
 /// A panel above the menu bar, centered on the notch. Clicks pass through it except right under the pointer.
 final class NotchController {
     private let live: Live
-    private let screen: NSScreen
-    private let metrics: NotchMetrics
+    private var screen: NSScreen
+    private var metrics: NotchMetrics
     private let panel: NSPanel
+    private let host: ClickThroughHost<NotchView>
     private var hoverTimer: Timer?
+    private static let size = CGSize(width: 700, height: 260) // room for the biggest state
+
+    /// The screen with the notch, else the one with the menu bar.
+    private static func pickScreen() -> NSScreen {
+        NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.screens.first ?? NSScreen.main!
+    }
 
     init(live: Live) {
         self.live = live
-        screen = NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main ?? NSScreen.screens[0]
+        screen = Self.pickScreen()
         metrics = .of(screen)
 
-        let size = CGSize(width: 700, height: 260) // room for the biggest state
-        panel = NSPanel(contentRect: NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
-                                            width: size.width, height: size.height),
-                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
@@ -248,15 +263,29 @@ final class NotchController {
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.mainMenuWindow)) + 3)
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
 
-        let host = ClickThroughHost(rootView: NotchView(live: live, metrics: metrics))
+        host = ClickThroughHost(rootView: NotchView(live: live, metrics: metrics))
         host.sizingOptions = []
         panel.contentView = host
+        place()
         panel.orderFrontRegardless()
+
+        // Displays plugged in or out, lid closed, resolution changed: move back to the top of the right screen.
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                               object: nil, queue: .main) { [weak self] _ in self?.place() }
 
         // Check where the pointer is (trackpad or watch) 20× a second.
         hoverTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
             self?.checkHover()
         }
+    }
+
+    private func place() {
+        screen = Self.pickScreen()
+        metrics = .of(screen)
+        host.rootView = NotchView(live: live, metrics: metrics)
+        let size = Self.size
+        panel.setFrame(NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
+                              width: size.width, height: size.height), display: true)
     }
 
     private func checkHover() {

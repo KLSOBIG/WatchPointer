@@ -38,6 +38,8 @@ The first time, macOS asks for **Bluetooth** access and for **Accessibility** ac
 
 It shows up in the notch (or the middle of the menu bar on Macs without one).
 
+It has no Dock icon. To quit, hover the notch and click the **power** button (or right-click the notch › Quit WatchPointer), or press Ctrl-C in the terminal it runs in.
+
 ### 2. Watch app
 
 1. Open `Watch/WatchPointer.xcodeproj` in Xcode.
