@@ -83,13 +83,14 @@ struct NotchView: View {
                 ears.frame(height: metrics.height)
                 switch mode {
                 case .collapsed: EmptyView()
-                case .toast: toast.transition(.opacity)
-                case .expanded: details.transition(.opacity)
+                case .toast: toast.transition(Self.contentFade)
+                case .expanded: details.transition(Self.contentFade)
                 }
             }
             .padding(.horizontal, 14)
         }
         .frame(width: size.width, height: size.height)
+        .clipShape(NotchShape(bottomRadius: mode == .collapsed ? 10 : 22)) // nothing shows outside the black
         .contextMenu { Button("Quit WatchPointer") { NSApp.terminate(nil) } }
         .animation(.smooth(duration: 0.38), value: mode)
         .animation(.smooth(duration: 0.3), value: live.phase)
@@ -99,6 +100,12 @@ struct NotchView: View {
             withAnimation(.smooth(duration: 0.25)) { blink = false }
         }
     }
+
+    /// Content shows up once the panel has nearly finished growing, and goes before it starts shrinking,
+    /// so it never appears ahead of the black around it.
+    private static let contentFade = AnyTransition.asymmetric(
+        insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.2)),
+        removal: .opacity.animation(.easeIn(duration: 0.08)))
 
     private var ears: some View {
         HStack {
